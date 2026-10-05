@@ -1,0 +1,4 @@
+# Outils de build (pip provient de ensurepip via 'python -m venv').
+# setuptools==84.0.0 identique au venv de reference ; requis pour construire
+# l'unique sdist du gel (antlr4-python3-runtime 4.9.3).
+setuptools==84.0.0 --hash=sha256:51a52592b3b99e102b609654876bd65f19f999935166d1352678931132b0c670

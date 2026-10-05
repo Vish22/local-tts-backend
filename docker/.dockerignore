@@ -1,0 +1,11 @@
+.env
+*.log
+data/
+jobs/
+__pycache__/
+*.pyc
+.git/
+SHA256SUMS
+*.bak
+pin-hashes.json
+.hashes.json

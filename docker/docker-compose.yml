@@ -1,0 +1,68 @@
+# Moteur TTS Neutts résident (CPU) — 10.1.33.71 « portgpu »
+#   cp .env.example .env && chmod 600 .env   (renseigner NEUTTS_TOKEN et HF_TOKEN)
+#   docker compose build && docker compose up -d
+services:
+  neutts:
+    build:
+      context: .
+      args:
+        # BASE_IMAGE n'est PAS surchargé ici : la valeur par défaut du Dockerfile
+        # (python:3.13-slim épinglée par digest) fait foi, une seule source de vérité.
+        LLAMA_INDEX: https://abetlen.github.io/llama-cpp-python/whl/cpu
+    image: neutts-serve:1.4.3
+    container_name: neutts
+    restart: unless-stopped
+    stop_grace_period: 20s
+    init: true                      # PID 1 minimal : pas de zombies, signaux transmis à serve.py
+    # Durcissement : le conteneur n'a besoin d'écrire que dans /data (bind ./data sur l'hôte).
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m,mode=1777     # fichiers temporaires de synthèse (TMPDIR)
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    shm_size: 512m                 # torch/onnxruntime : evite les defauts de /dev/shm (64 Mo par defaut)
+    # Le port est publié UNIQUEMENT sur l'IP LAN : les règles ufw de l'hôte ne
+    # filtrent pas les ports publiés par Docker (chaîne DOCKER, en amont d'ufw).
+    ports:
+      - "${NEUTTS_BIND_HOST:-10.1.33.71}:8130:8130"
+    environment:
+      NEUTTS_HOST: 0.0.0.0
+      NEUTTS_PORT: "8130"
+      NEUTTS_IDLE_TIMEOUT: "0"          # 0 = moteur jamais déchargé (pas de cold start)
+      NEUTTS_VOICE: juliette
+      NEUTTS_MODEL: neuphonic/neutts-nano-french-q4-gguf
+      NEUTTS_CODEC: neuphonic/neucodec
+      NEUTTS_REFS: /opt/neutts/refs
+      NEUTTS_OUT_DIR: /data/out
+      NEUTTS_OUT_KEEP_S: "86400"        # purge des WAV de sortie > 24 h
+      NEUTTS_LOG: /data/serve.log
+      NEUTTS_TOKEN: ${NEUTTS_TOKEN:?renseigner NEUTTS_TOKEN dans .env}
+      # Alternative sans variable d'environnement (le jeton n'apparaît alors pas dans
+      # `docker inspect`) : déposer le jeton dans un fichier 600 et utiliser un secret,
+      #   NEUTTS_TOKEN_FILE: /run/secrets/neutts_token
+      # NEUTTS_ALLOW_NO_TOKEN n'est PAS défini : sans jeton, l'écoute non-loopback refuse de démarrer.
+      NEUTTS_MAX_CHARS: "4000"          # plafond de texte par requête (au-delà : 413)
+      NEUTTS_MAX_BODY: "65536"         # plafond du corps JSON (au-delà : 413)
+      NEUTTS_MAX_CONN: "16"            # connexions simultanées max (au-delà : refus immédiat)
+      HF_TOKEN: ${HF_TOKEN:?renseigner HF_TOKEN dans .env}
+      HF_HOME: /data/hf
+      OMP_NUM_THREADS: "4"
+      TOKENIZERS_PARALLELISM: "false"
+    volumes:
+      # Bind local : ./data contient le cache HF (./data/hf), les WAV (./data/out)
+      # et le log (./data/serve.log). Créer et donner le dossier au conteneur AVANT
+      # le premier up, sinon l'écriture échoue (uid 10001, un bind n'hérite pas des
+      # permissions de l'image) :
+      #   mkdir -p data && sudo chown -R 10001:10001 data && chmod 750 data
+      - ./data:/data
+      - ./ctx/refs:/opt/neutts/refs:ro # voix de référence modifiable sans rebuild
+    # Mémoire : prévoir ~6 Go libres (moteur ~4,6 Go RSS + torch).
+    # Ne pas fixer de mem_limit sous 6g : le chargement du modèle serait tué.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

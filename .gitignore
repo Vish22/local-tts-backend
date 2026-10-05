@@ -1,0 +1,6 @@
+# racine du dépôt : ne jamais versionner d'état d'exécution ni de secret
+data/
+*.log
+__pycache__/
+*.pyc
+*.tar.gz
