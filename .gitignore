@@ -4,3 +4,5 @@ data/
 __pycache__/
 *.pyc
 *.tar.gz
+# état de travail local (non publiable)
+ETAT.md
